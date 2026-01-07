@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✋ Présences - Championnat 2026</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyD26jNyvIzWYNwfS97N27iZES-AFWVtIGc",
+            authDomain: "championnat-football.firebaseapp.com",
+            projectId: "championnat-football",
+            storageBucket: "championnat-football.firebasestorage.app",
+            messagingSenderId: "271329092716",
+            appId: "1:271329092716:web:68e7ff9e0527f489c36449"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+    </script>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        const PresencesApp = () => {
+            const [playerName, setPlayerName] = useState('');
+            const [presences, setPresences] = useState([]);
+            const [nextMatch, setNextMatch] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [hasVoted, setHasVoted] = useState(false);
+
+            const championshipDates = ['2026-01-19', '2026-01-26', '2026-02-02', '2026-02-09', '2026-02-23', '2026-03-02', '2026-03-09', '2026-03-16', '2026-03-23', '2026-03-30', '2026-04-13', '2026-04-20', '2026-04-27', '2026-05-04', '2026-05-11', '2026-05-18', '2026-06-01', '2026-06-08', '2026-06-15'];
+
+            useEffect(() => {
+                findNextMatch();
+                loadPresences();
+            }, []);
+
+            const findNextMatch = () => {
+                const today = new Date();
+                const next = championshipDates.find(dateStr => {
+                    const matchDate = new Date(dateStr + 'T12:00:00');
+                    return matchDate > today;
+                });
+                if (next) {
+                    const matchDate = new Date(next + 'T12:00:00');
+                    const journee = championshipDates.indexOf(next) + 1;
+                    setNextMatch({ date: matchDate, journee, dateStr: next });
+                }
+                setLoading(false);
+            };
+
+            const loadPresences = () => {
+                if (!nextMatch) return;
+                const unsubscribe = db.collection('presences').doc(nextMatch.dateStr).onSnapshot((doc) => {
+                    if (doc.exists) {
+                        setPresences(doc.data().players || []);
+                    }
+                });
+                return unsubscribe;
+            };
+
+            useEffect(() => {
+                if (nextMatch) {
+                    loadPresences();
+                    const voted = localStorage.getItem(`voted_${nextMatch.dateStr}`);
+                    setHasVoted(!!voted);
+                }
+            }, [nextMatch]);
+
+            const handleVote = async (status) => {
+                if (!playerName.trim()) {
+                    alert('Entrez votre nom');
+                    return;
+                }
+                if (hasVoted) {
+                    alert('Vous avez déjà voté pour ce match');
+                    return;
+                }
+
+                const newPresence = {
+                    name: playerName.trim(),
+                    status: status,
+                    timestamp: new Date().toISOString()
+                };
+
+                const updatedPresences = [...presences.filter(p => p.name !== playerName.trim()), newPresence];
+
+                try {
+                    await db.collection('presences').doc(nextMatch.dateStr).set({
+                        matchDate: nextMatch.dateStr,
+                        journee: nextMatch.journee,
+                        players: updatedPresences
+                    });
+                    
+                    localStorage.setItem(`voted_${nextMatch.dateStr}`, 'true');
+                    localStorage.setItem(`voter_name_${nextMatch.dateStr}`, playerName.trim());
+                    setHasVoted(true);
+                    alert(`${status === 'present' ? '✅ Présence' : '❌ Absence'} enregistrée !`);
+                } catch (error) {
+                    alert('Erreur lors de l\'enregistrement');
+                }
+            };
+
+            const presentCount = presences.filter(p => p.status === 'present').length;
+            const absentCount = presences.filter(p => p.status === 'absent').length;
+
+            if (loading) return <div className="flex items-center justify-center h-screen bg-blue-900 text-white text-xl">⚽ Chargement...</div>;
+
+            if (!nextMatch) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 p-4 flex items-center justify-center">
+                        <div className="bg-white rounded-lg shadow-xl p-6 text-center">
+                            <h1 className="text-2xl font-bold text-gray-800 mb-4">🏆 Championnat Terminé</h1>
+                            <p className="text-gray-600">Il n'y a plus de matchs à venir pour le moment.</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 p-4">
+                    <div className="max-w-2xl mx-auto">
+                        <div className="bg-white rounded-lg shadow-xl p-6 mb-6">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-10 h-10 bg-red-600 rounded-full"></div>
+                                <div className="w-10 h-10 bg-white rounded-full border-2 border-gray-800"></div>
+                                <div>
+                                    <h1 className="text-2xl font-bold text-gray-800">✋ Présences</h1>
+                                    <p className="text-sm text-gray-600">Qui sera là ?</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-gradient-to-r from-green-100 to-green-50 rounded-lg p-4 mb-6 border-2 border-green-400">
+                                <h2 className="text-lg font-bold text-gray-800 mb-2">📅 Prochain Match - J{nextMatch.journee}</h2>
+                                <p className="text-xl font-bold text-green-700">
+                                    {nextMatch.date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                </p>
+                            </div>
+
+                            {!hasVoted ? (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block font-semibold mb-2 text-gray-700">Votre nom :</label>
+                                        <input
+                                            type="text"
+                                            className="w-full p-3 border-2 border-gray-300 rounded-lg text-lg"
+                                            placeholder="Entrez votre nom"
+                                            value={playerName}
+                                            onChange={(e) => setPlayerName(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button
+                                            onClick={() => handleVote('present')}
+                                            className="bg-green-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-green-700 transition"
+                                        >
+                                            ✅ PRÉSENT
+                                        </button>
+                                        <button
+                                            onClick={() => handleVote('absent')}
+                                            className="bg-red-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-red-700 transition"
+                                        >
+                                            ❌ ABSENT
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-blue-50 border-2 border-blue-400 rounded-lg p-4 text-center">
+                                    <p className="text-lg font-semibold text-blue-800">
+                                        ✅ Vous avez déjà voté pour ce match
+                                    </p>
+                                    <p className="text-sm text-blue-600 mt-2">
+                                        Merci {localStorage.getItem(`voter_name_${nextMatch.dateStr}`)} !
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow-xl p-6 mb-6">
+                            <h2 className="text-xl font-bold mb-4">📊 Résumé des présences</h2>
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div className="bg-green-100 rounded-lg p-4 text-center">
+                                    <div className="text-4xl font-bold text-green-700">{presentCount}</div>
+                                    <div className="text-sm text-gray-700 mt-2">Présents</div>
+                                </div>
+                                <div className="bg-red-100 rounded-lg p-4 text-center">
+                                    <div className="text-4xl font-bold text-red-700">{absentCount}</div>
+                                    <div className="text-sm text-gray-700 mt-2">Absents</div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                {presentCount > 0 && (
+                                    <div>
+                                        <h3 className="font-bold text-green-700 mb-2">✅ Présents ({presentCount})</h3>
+                                        <div className="bg-green-50 rounded-lg p-3 space-y-1">
+                                            {presences.filter(p => p.status === 'present').map((p, i) => (
+                                                <div key={i} className="flex items-center gap-2 text-sm">
+                                                    <span className="text-green-600">✓</span>
+                                                    <span className="font-semibold">{p.name}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {absentCount > 0 && (
+                                    <div>
+                                        <h3 className="font-bold text-red-700 mb-2">❌ Absents ({absentCount})</h3>
+                                        <div className="bg-red-50 rounded-lg p-3 space-y-1">
+                                            {presences.filter(p => p.status === 'absent').map((p, i) => (
+                                                <div key={i} className="flex items-center gap-2 text-sm">
+                                                    <span className="text-red-600">✗</span>
+                                                    <span className="font-semibold">{p.name}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="text-center">
+                            <a href="https://bifor971.github.io/championnat-visiteur/" 
+                               className="inline-block bg-white text-blue-900 px-6 py-3 rounded-lg font-bold hover:bg-gray-100 transition">
+                                📊 Voir le Classement
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<PresencesApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
